@@ -1,0 +1,10 @@
+Package: com.miwix.slidetext
+Name: SlideText
+Depends: mobilesubstrate
+Pre-Depends: ws.hbang.common (>= 1.12)
+Version: 1.1.0
+Architecture: iphoneos-arm
+Depiction: https://lgariv.github.io/LaVie/depictions/?p=com.miwix.slidetext
+Maintainer: Lavie Gariv <lavie43b@gmail.com>
+Author: Lavie Gariv
+Section: Tweaks
