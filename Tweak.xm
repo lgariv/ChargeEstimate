@@ -1,4 +1,6 @@
 #import "SlideTextExtra.h"
+#import <IOKit/IOKitLib.h>
+#import <stdio.h>
 #import <spawn.h>
 #import <SpringBoard/SpringBoard.h>
 
@@ -21,6 +23,17 @@ static BOOL TweakisEnabled = YES;
 static NSString* STtext = @"Swipe up to unlock";
 static int Height = -33;
 
+NSDictionary* getBatteryInfo()
+{
+  CFDictionaryRef matching = IOServiceMatching("IOPMPowerSource");
+  io_service_t service = IOServiceGetMatchingService(kIOMasterPortDefault, matching);
+  CFMutableDictionaryRef prop = NULL;
+  IORegistryEntryCreateCFProperties(service, &prop, NULL, 0);
+  NSDictionary* dict = (__bridge_transfer NSDictionary*)prop;
+  IOObjectRelease(service);
+  return dict;
+}
+
 %group enableTweak
 %hook CSTeachableMomentsContainerViewController
 - (void)_updateText:(id)arg1 {
@@ -31,17 +44,6 @@ static int Height = -33;
     NSArray *devices = MSHookIvar<NSArray *>(bcb, "_sortedDevices"); // getter לכל המכשירים
 
     NSDictionary* batteryInfo = getBatteryInfo();
-
-    NSDictionary* getBatteryInfo()
-    {
-      CFDictionaryRef matching = IOServiceMatching("IOPMPowerSource");
-      io_service_t service = IOServiceGetMatchingService(kIOMasterPortDefault, matching);
-      CFMutableDictionaryRef prop = NULL;
-      IORegistryEntryCreateCFProperties(service, &prop, NULL, 0);
-      NSDictionary* dict = (__bridge_transfer NSDictionary*)prop;
-      IOObjectRelease(service);
-      return dict;
-    }
 
     NSMutableString *newMessage = [NSMutableString new];
 
