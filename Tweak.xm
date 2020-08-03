@@ -1,4 +1,7 @@
-#import "SlideTextExtra.h"
+#import "ChargeEstimateExtra.h"
+#include <IOKit/pwr_mgt/IOPM.h>
+#include <IOKit/IOTypes.h>
+#include <IOKit/IOReturn.h>
 #import <IOKit/IOKitLib.h>
 #import <stdio.h>
 #import <spawn.h>
@@ -9,7 +12,7 @@
 }
 
 + (id)sharedInstance;
-@end
+@end 
 
 @interface BCBatteryDevice {
   NSString* _name;		// השם של כל מכשיר
@@ -17,158 +20,181 @@
   BOOL _wirelesslyCharging; // האם נטען אלחוטית
   BOOL _charging; // האם נטען
 }
+@property (assign,getter=isInternal,nonatomic) BOOL internal;                                          //@synthesize internal=_internal - In the implementation block
 @end
 
-static BOOL TweakisEnabled = YES;
-static NSString* STtext = @"Swipe up to unlock";
-static int Height = -33;
-
-NSDictionary* getBatteryInfo()
-{
+NSDictionary* getBatteryInfo() {
   CFDictionaryRef matching = IOServiceMatching("IOPMPowerSource");
   io_service_t service = IOServiceGetMatchingService(kIOMasterPortDefault, matching);
   CFMutableDictionaryRef prop = NULL;
   IORegistryEntryCreateCFProperties(service, &prop, NULL, 0);
+  CFTypeRef intTimeRemaining;
+  intTimeRemaining = IORegistryEntryCreateCFProperty(service, CFSTR("AvgTimeToFull"), NULL, 0);
+  NSString *serialNumber = [NSString stringWithString:(__bridge NSString*)intTimeRemaining];
+  CFRelease(intTimeRemaining);
+  NSLog(@"timeRemaining: %@", serialNumber);
   NSDictionary* dict = (__bridge_transfer NSDictionary*)prop;
   IOObjectRelease(service);
   return dict;
 }
 
-%group enableTweak
-%hook CSTeachableMomentsContainerViewController
-- (void)_updateText:(id)arg1 {
-    /*if (STtext ){
-        arg1 = STtext;
-    }*/
+%hook UILabel
+- (void)setText:(NSString *)arg1 {
+  if ([arg1 containsString:@"Charged"]) {
+    NSString *original = arg1;
+    arg1 = @"FOUND";
     BCBatteryDeviceController *bcb = [%c(BCBatteryDeviceController) sharedInstance];
     NSArray *devices = MSHookIvar<NSArray *>(bcb, "_sortedDevices"); // getter לכל המכשירים
 
-    NSDictionary* batteryInfo = getBatteryInfo();
-
     NSMutableString *newMessage = [NSMutableString new];
 
-    for (BCBatteryDevice *device in devices) {
-      long long deviceCharge = MSHookIvar<long long>(device, "_percentCharge"); //getter בנפרד לאחוזים של כל מכשיר
-      BOOL deviceCharging = MSHookIvar<BOOL>(device, "_charging"); //getter בנפרד לאחוזים של כל מכשיר
+    BCBatteryDevice *device;
+    for (BCBatteryDevice *batteryDevice in devices) {
+      //if ([device isInternal]) {
+        device = batteryDevice;
+      //}
+    }
 
-      if (deviceCharging) {
-        static double max = (2362.92/1000)*1000;
-        static double amp = (1)*1000;
-        double currentcharge = ((deviceCharge*max)/100);
-        long long timeRemaining = ((max-currentcharge)/amp)*60;
-        if (currentcharge != 1) {
-          if (timeRemaining >= 60) {
-            long long timeRemainingHours = timeRemaining/60;
-            long long timeRemainingMinutes = timeRemaining-(timeRemainingHours*60);
-            [newMessage appendString:[NSString stringWithFormat:@"Charging (%lld hrs, %lld mins until full)\n", timeRemainingHours, timeRemainingMinutes]]; // מבנה ההודעה
-            arg1 = newMessage;
-          } else {
-            if (timeRemaining == 0) {
-              if (currentcharge == 1) {
-                arg1 = STtext;
-              } else {
-                [newMessage appendString:[NSString stringWithFormat:@"Charging (almost full)\n"]]; // מבנה ההודעה
-                arg1 = newMessage;
-              }
+    //long long deviceCharge = MSHookIvar<long long>(device, "_percentCharge");
+    //BOOL deviceCharging = MSHookIvar<BOOL>(device, "_charging");
+
+    //getInfo:
+    NSDictionary* batteryInfo = getBatteryInfo();
+    NSLog(@"[TESTINGTEST] %@",batteryInfo);
+    NSLog(@"[TESTINGTEST] AbsoluteCapacity:%f",[batteryInfo[@"AbsoluteCapacity"] doubleValue]);
+    NSLog(@"[TESTINGTEST] NominalChargeCapacity:%f",[batteryInfo[@"NominalChargeCapacity"] doubleValue]);
+    NSLog(@"[TESTINGTEST] Amperage:%f",[batteryInfo[@"Amperage"] doubleValue]);
+    NSLog(@"[TESTINGTEST] AdapterCurrent:%f",[batteryInfo[@"AdapterDetails"][@"Current"] doubleValue]);
+
+    double max = [batteryInfo[@"NominalChargeCapacity"] doubleValue];
+    double amp = [batteryInfo[@"Amperage"] doubleValue];
+    //if (amp <= 100) goto getInfo;
+    if (amp <= 0) amp = [batteryInfo[@"AdapterDetails"][@"Current"] doubleValue]-200;
+    double currentCharge = [batteryInfo[@"AbsoluteCapacity"] doubleValue];
+    //double currentCharge = ((deviceCharge*max)/100);
+    long long timeRemaining = ((max-currentCharge)/amp)*60;
+    NSLog(@"[TESTINGTEST] timeRemaining:%lld",timeRemaining);
+
+    double avgTime = 0;
+    if ([batteryInfo[@"AdapterDetails"][@"Watts"] doubleValue] == 5) {
+      [newMessage appendString:[NSString stringWithFormat:@"Charging "]]; // מבנה ההודעה
+      if ([[NSUserDefaults standardUserDefaults] dictionaryForKey:@"avgTimeDict"] != nil) {      
+        NSMutableDictionary *avgTimeDict = [[[NSUserDefaults standardUserDefaults] dictionaryForKey:@"avgTimeDict"] mutableCopy];
+        //if (avgTimeDict != nil) {
+          //if ([avgTimeDict count] == 1) {
+            if (currentCharge - [[avgTimeDict allValues][0] doubleValue] >= 20) {
+            //if ([[avgTimeDict allValues][0] doubleValue] < currentCharge) {
+              double timeToTime = [[NSDate date] timeIntervalSince1970] - [[avgTimeDict allKeys][0] doubleValue];
+              double charged = currentCharge - [[avgTimeDict allValues][0] doubleValue];
+              double remaining = max - currentCharge;
+              avgTime = ((((remaining/charged)*timeToTime)+[[[NSUserDefaults standardUserDefaults] valueForKey:@"avgTime"] doubleValue])/2)/60;
+              NSDictionary *newAvgTimeDict = @{[[NSNumber numberWithDouble:[[NSDate date] timeIntervalSince1970]] stringValue] : [NSNumber numberWithDouble:currentCharge]};
+              [[NSUserDefaults standardUserDefaults] setObject:newAvgTimeDict forKey:@"avgTimeDict"];
+              [[NSUserDefaults standardUserDefaults] setObject:[NSNumber numberWithDouble:avgTime] forKey:@"avgTime"];
+              NSLog(@"[TESTINGTEST] NEW :%f",(remaining/charged)*timeToTime);
+              NSLog(@"[TESTINGTEST] NEW avgTime:%f",avgTime);
             } else {
-              [newMessage appendString:[NSString stringWithFormat:@"Charging (%lld mins until full)\n", timeRemaining]]; // מבנה ההודעה
-              arg1 = newMessage;
+              avgTime = [[[NSUserDefaults standardUserDefaults] valueForKey:@"avgTime"] doubleValue];
             }
+          //}
+        //}
+      } else {
+        NSDictionary *newAvgTimeDict = @{[[NSNumber numberWithDouble:[[NSDate date] timeIntervalSince1970]] stringValue] : [NSNumber numberWithDouble:currentCharge]};
+        [[NSUserDefaults standardUserDefaults] setObject:newAvgTimeDict forKey:@"avgTimeDict"];
+        [[NSUserDefaults standardUserDefaults] setObject:[NSNumber numberWithDouble:timeRemaining] forKey:@"avgTime"];
+        NSLog(@"[TESTINGTEST] NIL avgTime:%f",avgTime);
+      }
+    } else if ([batteryInfo[@"AdapterDetails"][@"Watts"] doubleValue] >= 5) {
+      [newMessage appendString:[NSString stringWithFormat:@"Fast Charging "]]; // מבנה ההודעה
+      if ([[NSUserDefaults standardUserDefaults] dictionaryForKey:@"avgTimeFastDict"] != nil) {      
+        NSMutableDictionary *avgTimeFastDict = [[[NSUserDefaults standardUserDefaults] dictionaryForKey:@"avgTimeFastDict"] mutableCopy];
+        //if (avgTimeFastDict != nil) {
+          //if ([avgTimeFastDict count] == 1) {
+            if (currentCharge - [[avgTimeFastDict allValues][0] doubleValue] >= 20) {
+            //if ([[avgTimeFastDict allValues][0] doubleValue] < currentCharge) {
+              double timeToTime = [[NSDate date] timeIntervalSince1970] - [[avgTimeFastDict allKeys][0] doubleValue];
+              double charged = currentCharge - [[avgTimeFastDict allValues][0] doubleValue];
+              double remaining = max - currentCharge;
+              avgTime = ((((remaining/charged)*timeToTime)+[[[NSUserDefaults standardUserDefaults] valueForKey:@"avgTimeFast"] doubleValue])/2)/60;
+              NSDictionary *newAvgTimeFastDict = @{[[NSNumber numberWithDouble:[[NSDate date] timeIntervalSince1970]] stringValue] : [NSNumber numberWithDouble:currentCharge]};
+              [[NSUserDefaults standardUserDefaults] setObject:newAvgTimeFastDict forKey:@"avgTimeFastDict"];
+              [[NSUserDefaults standardUserDefaults] setObject:[NSNumber numberWithDouble:avgTime] forKey:@"avgTimeFast"];
+              NSLog(@"[TESTINGTEST] NEW :%f",(remaining/charged)*timeToTime);
+              NSLog(@"[TESTINGTEST] NEW avgTime:%f",avgTime);
+            } else {
+              avgTime = [[[NSUserDefaults standardUserDefaults] valueForKey:@"avgTimeFast"] doubleValue];
+            }
+          //}
+        //}
+      } else {
+        NSDictionary *newAvgTimeFastDict = @{[[NSNumber numberWithDouble:[[NSDate date] timeIntervalSince1970]] stringValue] : [NSNumber numberWithDouble:currentCharge]};
+        [[NSUserDefaults standardUserDefaults] setObject:newAvgTimeFastDict forKey:@"avgTimeFastDict"];
+        [[NSUserDefaults standardUserDefaults] setObject:[NSNumber numberWithDouble:timeRemaining] forKey:@"avgTimeFast"];
+        NSLog(@"[TESTINGTEST] NIL avgTime:%f",avgTime);
+      }
+    }
+
+    if (avgTime != 0) {
+      if ([batteryInfo[@"AvgTimeToFull"] doubleValue] != 65535) {
+        NSLog(@"[TESTINGTEST] avgTime:%f AvgTimeToFull:%f",avgTime,([batteryInfo[@"AvgTimeToFull"] doubleValue]/600));
+        timeRemaining = ((avgTime*2)+(timeRemaining*2)+([batteryInfo[@"AvgTimeToFull"] doubleValue]/600))/5;
+      } else {
+        NSLog(@"[TESTINGTEST] avgTime:%f",avgTime);
+        timeRemaining = ((avgTime*2)+(timeRemaining*2))/4;
+      }
+    } else if ([batteryInfo[@"AvgTimeToFull"] doubleValue] != 65535) {
+      NSLog(@"[TESTINGTEST] AvgTimeToFull:%f",([batteryInfo[@"AvgTimeToFull"] doubleValue]/600));
+      timeRemaining = ((timeRemaining*2)+([batteryInfo[@"AvgTimeToFull"] doubleValue]/600))/3;
+    }
+
+    //if (currentCharge != 1) {
+      if (timeRemaining >= 60) {
+        long long timeRemainingHours = timeRemaining/60;
+        long long timeRemainingMinutes = timeRemaining-(timeRemainingHours*60);
+        if (timeRemainingMinutes == 0)
+        [newMessage appendString:[NSString stringWithFormat:@"(%lld hrs until full)", timeRemainingHours]]; // מבנה ההודעה
+        else
+        [newMessage appendString:[NSString stringWithFormat:@"(%lld hrs, %lld mins until full)", timeRemainingHours, timeRemainingMinutes]]; // מבנה ההודעה
+        arg1 = newMessage;
+      } else {
+        if (timeRemaining <= 1) {
+          if (currentCharge <= 1 && currentCharge >= 0.99) {
+            [newMessage appendString:[NSString stringWithFormat:@"(almost full)"]]; // מבנה ההודעה
+            arg1 = newMessage;
           }
-          %orig(arg1);
-        }
-      } else {
-        arg1 = STtext;
-        %orig(arg1);
-      }
-    }
-}
-/*- (void)fadeInImmediately:(BOOL)arg1 completion:(id)arg2 {
-  arg1 = YES;
-  return %orig;
-}
-- (void)setVisible:(BOOL)arg1 animated:(BOOL)arg2 {
-  arg1 = YES;
-  arg2 = NO;
-  return %orig;
-}*/
--(id)_textPositionAnimationWithDuration:(double)arg1 beginTime:(double)arg2 {
-  //arg1 = 0;
-  //arg2 = 1;
-  return %orig (arg1, arg2);
-}
-- (id)_textAlphaAnimationWithDuration:(double)arg1 beginTime:(double)arg2{
-  arg1 = 1;
-  arg2 = 0;
-  return %orig (arg1, arg2);
-}
-%end
-%hook CSTeachableMomentsContainerView
-/*- (void)setCallToActionLabel:(id)arg1 {
-    if (STtext ){
-        arg1 = STtext;
-    }
-    %orig(arg1);
-}*/
-- (void)setFrame:(CGRect)arg1 {
-    arg1 = (CGRectMake(arg1.origin.x, Height, arg1.size.width, arg1.size.height));
-    %orig(arg1);
-}
-%end
-%end
-
-%group disableTweak
-%hook CSTeachableMomentsContainerViewController
-- (void)_updateText:(id)arg1 {
-    if ( STtext == nil ) {
-        arg1 = @"Swipe up to unlock";
-    }
-    %orig(arg1);
-}
-%end
-%hook SBDashBoardTeachableMomentsContainerViewController
-- (void)_updateText:(id)arg1 {
-    if ( STtext == nil ) {
-        arg1 = @"Swipe up to unlock";
-    }
-    %orig(arg1);
-}
-%end
-%end
-
-void Respring() {
-  [(SpringBoard *)[UIApplication sharedApplication] _relaunchSpringBoardNow];
-}
-
-static void loadPrefs()
-{
-    NSMutableDictionary *prefs = [[NSMutableDictionary alloc] initWithContentsOfFile:@"/var/mobile/Library/Preferences/com.miwix.slidetextprefs.plist"];
-    if ( [prefs objectForKey:@"TweakisEnabled"] ? [[prefs objectForKey:@"TweakisEnabled"] boolValue] : TweakisEnabled ) {
-        if ( STtext == ( [prefs objectForKey:@"STtext"] ? [prefs objectForKey:@"STtext"] : nil ) ) {
-            %init(disableTweak);
         } else {
-            STtext = ( [prefs objectForKey:@"STtext"] ? [prefs objectForKey:@"STtext"] : STtext );
-            %init(enableTweak);
+          [newMessage appendString:[NSString stringWithFormat:@"(%lld mins until full)", timeRemaining]]; // מבנה ההודעה
+          arg1 = newMessage;
         }
-    }
-}
-
-static void changeHeight()
-{
-    NSMutableDictionary *prefs = [[NSMutableDictionary alloc] initWithContentsOfFile:@"/var/mobile/Library/Preferences/com.miwix.slidetextprefs.plist"];
-    if ( [prefs objectForKey:@"TweakisEnabled"] ? [[prefs objectForKey:@"TweakisEnabled"] boolValue] : TweakisEnabled ) {
-      if ( Height == ( [prefs objectForKey:@"Height"] ? [[prefs objectForKey:@"Height"] intValue] : Height ) ) {
-      } else {
-        Height = ( [prefs objectForKey:@"HeightSlider"] ? [[prefs objectForKey:@"HeightSlider"] intValue] : Height );
       }
-    }
+    //}
+    if ([arg1 containsString:@"Charging"]) %orig(arg1);
+    else %orig(original);
+  } else {
+    %orig;
+  }
+}
+%end
+
+%hook SpringBoard
+- (void)applicationDidFinishLaunching:(id)application {
+  %orig;
+  [[NSNotificationCenter defaultCenter] addObserver:self
+  selector:@selector(batteryStateChange:) 
+  name:@"UIDeviceBatteryStateDidChangeNotification"
+  object:nil];
 }
 
-%ctor {
-    @autoreleasepool {
-        changeHeight();
-        loadPrefs();
-        CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, (CFNotificationCallback)loadPrefs, CFSTR("com.miwix.slidetextprefs/settingschanged"), NULL, CFNotificationSuspensionBehaviorCoalesce);
-        CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, (CFNotificationCallback)Respring, CFSTR("com.miwix.KamaKeifPrefs/relaunchSpringBoard"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
-        }
+%new
+- (void)batteryStateChange:(NSNotification *)notification {
+  if ([[UIDevice currentDevice] batteryState] == 2) {
+    NSLog(@"[TESTINGTEST] state: Plugged");
+  } else if ([[UIDevice currentDevice] batteryState] == 1) {
+    NSLog(@"[TESTINGTEST] state: Unplugged");
+    /*[[NSUserDefaults standardUserDefaults] setValue:0 forKey:@"avgTimeDict"];
+    [[NSUserDefaults standardUserDefaults] setValue:0 forKey:@"avgTimeFastDict"];
+    [[NSUserDefaults standardUserDefaults] setValue:0 forKey:@"avgTime"];
+    [[NSUserDefaults standardUserDefaults] setValue:0 forKey:@"avgTimeFast"];*/
+  }
 }
+%end

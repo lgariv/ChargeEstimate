@@ -72,9 +72,9 @@
             }
         },
         {
-            "label": "Build & Install with Theos (College)",
+            "label": "Build & Install with Theos (Home Parallel)",
             "type": "shell",
-            "command": "make package install THEOS_DEVICE_IP=192.168.10.15 THEOS_DEVICE_PORT=22",
+            "command": "make package install THEOS_DEVICE_IP=192.168.1.21 -j 4",
             "problemMatcher": {
                 "fileLocation": [
                     "relative",
