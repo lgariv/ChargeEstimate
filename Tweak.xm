@@ -38,9 +38,11 @@ NSDictionary* getBatteryInfo() {
   return dict;
 }
 
+static BOOL showString = YES;
+
 %hook UILabel
 - (void)setText:(NSString *)arg1 {
-  if ([arg1 containsString:@"Charged"]) {
+  if ([arg1 containsString:@"Charged"] && showString) {
     NSString *original = arg1;
     arg1 = @"FOUND";
     BCBatteryDeviceController *bcb = [%c(BCBatteryDeviceController) sharedInstance];
@@ -68,18 +70,15 @@ NSDictionary* getBatteryInfo() {
 
     double max = [batteryInfo[@"NominalChargeCapacity"] doubleValue];
     double amp = [batteryInfo[@"Amperage"] doubleValue];
-    //if (amp <= 100) goto getInfo;
-    if (amp <= 0) amp = [batteryInfo[@"AdapterDetails"][@"Current"] doubleValue]-200;
+    if (amp <= 0) amp = [batteryInfo[@"AdapterDetails"][@"Current"] doubleValue]-250;
     double currentCharge = [batteryInfo[@"AbsoluteCapacity"] doubleValue];
-    //double currentCharge = ((deviceCharge*max)/100);
     long long timeRemaining = ((max-currentCharge)/amp)*60;
     NSLog(@"[TESTINGTEST] timeRemaining:%lld",timeRemaining);
 
     double avgTime = 0;
-    if ([batteryInfo[@"AdapterDetails"][@"Watts"] doubleValue] == 5) {
-      [newMessage appendString:[NSString stringWithFormat:@"Charging "]]; // מבנה ההודעה
-      if ([[NSUserDefaults standardUserDefaults] dictionaryForKey:@"avgTimeDict"] != nil) {      
-        NSMutableDictionary *avgTimeDict = [[[NSUserDefaults standardUserDefaults] dictionaryForKey:@"avgTimeDict"] mutableCopy];
+      [newMessage appendString:[NSString stringWithFormat:@"%lldW Charging ",[batteryInfo[@"AdapterDetails"][@"Watts"] longLongValue]]]; // מבנה ההודעה
+      if ([[NSUserDefaults standardUserDefaults] dictionaryForKey:[NSString stringWithFormat:@"avgTimeDict%lld",[batteryInfo[@"AdapterDetails"][@"Watts"] longLongValue]]]) {      
+        NSMutableDictionary *avgTimeDict = [[[NSUserDefaults standardUserDefaults] dictionaryForKey:[NSString stringWithFormat:@"avgTimeDict%lld",[batteryInfo[@"AdapterDetails"][@"Watts"] longLongValue]]] mutableCopy];
         //if (avgTimeDict != nil) {
           //if ([avgTimeDict count] == 1) {
             if (currentCharge - [[avgTimeDict allValues][0] doubleValue] >= 20) {
@@ -87,60 +86,33 @@ NSDictionary* getBatteryInfo() {
               double timeToTime = [[NSDate date] timeIntervalSince1970] - [[avgTimeDict allKeys][0] doubleValue];
               double charged = currentCharge - [[avgTimeDict allValues][0] doubleValue];
               double remaining = max - currentCharge;
-              avgTime = ((((remaining/charged)*timeToTime)+[[[NSUserDefaults standardUserDefaults] valueForKey:@"avgTime"] doubleValue])/2)/60;
+              avgTime = ((((remaining/charged)*timeToTime)+[[[NSUserDefaults standardUserDefaults] valueForKey:[NSString stringWithFormat:@"avgTime%lld",[batteryInfo[@"AdapterDetails"][@"Watts"] longLongValue]]] longLongValue])/2)/60;
               NSDictionary *newAvgTimeDict = @{[[NSNumber numberWithDouble:[[NSDate date] timeIntervalSince1970]] stringValue] : [NSNumber numberWithDouble:currentCharge]};
-              [[NSUserDefaults standardUserDefaults] setObject:newAvgTimeDict forKey:@"avgTimeDict"];
-              [[NSUserDefaults standardUserDefaults] setObject:[NSNumber numberWithDouble:avgTime] forKey:@"avgTime"];
+              [[NSUserDefaults standardUserDefaults] setObject:newAvgTimeDict forKey:[NSString stringWithFormat:@"avgTimeDict%lld",[batteryInfo[@"AdapterDetails"][@"Watts"] longLongValue]]];
+              [[NSUserDefaults standardUserDefaults] setObject:[NSNumber numberWithDouble:avgTime] forKey:[NSString stringWithFormat:@"avgTime%lld",[batteryInfo[@"AdapterDetails"][@"Watts"] longLongValue]]];
               NSLog(@"[TESTINGTEST] NEW :%f",(remaining/charged)*timeToTime);
               NSLog(@"[TESTINGTEST] NEW avgTime:%f",avgTime);
             } else {
-              avgTime = [[[NSUserDefaults standardUserDefaults] valueForKey:@"avgTime"] doubleValue];
+              avgTime = [[[NSUserDefaults standardUserDefaults] valueForKey:[NSString stringWithFormat:@"avgTime%lld",[batteryInfo[@"AdapterDetails"][@"Watts"] longLongValue]]] longLongValue];
             }
           //}
         //}
       } else {
         NSDictionary *newAvgTimeDict = @{[[NSNumber numberWithDouble:[[NSDate date] timeIntervalSince1970]] stringValue] : [NSNumber numberWithDouble:currentCharge]};
-        [[NSUserDefaults standardUserDefaults] setObject:newAvgTimeDict forKey:@"avgTimeDict"];
-        [[NSUserDefaults standardUserDefaults] setObject:[NSNumber numberWithDouble:timeRemaining] forKey:@"avgTime"];
+        [[NSUserDefaults standardUserDefaults] setObject:newAvgTimeDict forKey:[NSString stringWithFormat:@"avgTimeDict%lld",[batteryInfo[@"AdapterDetails"][@"Watts"] longLongValue]]];
+        [[NSUserDefaults standardUserDefaults] setObject:[NSNumber numberWithDouble:timeRemaining] forKey:[NSString stringWithFormat:@"avgTime%lld",[batteryInfo[@"AdapterDetails"][@"Watts"] longLongValue]]];
         NSLog(@"[TESTINGTEST] NIL avgTime:%f",avgTime);
       }
-    } else if ([batteryInfo[@"AdapterDetails"][@"Watts"] doubleValue] >= 5) {
-      [newMessage appendString:[NSString stringWithFormat:@"Fast Charging "]]; // מבנה ההודעה
-      if ([[NSUserDefaults standardUserDefaults] dictionaryForKey:@"avgTimeFastDict"] != nil) {      
-        NSMutableDictionary *avgTimeFastDict = [[[NSUserDefaults standardUserDefaults] dictionaryForKey:@"avgTimeFastDict"] mutableCopy];
-        //if (avgTimeFastDict != nil) {
-          //if ([avgTimeFastDict count] == 1) {
-            if (currentCharge - [[avgTimeFastDict allValues][0] doubleValue] >= 20) {
-            //if ([[avgTimeFastDict allValues][0] doubleValue] < currentCharge) {
-              double timeToTime = [[NSDate date] timeIntervalSince1970] - [[avgTimeFastDict allKeys][0] doubleValue];
-              double charged = currentCharge - [[avgTimeFastDict allValues][0] doubleValue];
-              double remaining = max - currentCharge;
-              avgTime = ((((remaining/charged)*timeToTime)+[[[NSUserDefaults standardUserDefaults] valueForKey:@"avgTimeFast"] doubleValue])/2)/60;
-              NSDictionary *newAvgTimeFastDict = @{[[NSNumber numberWithDouble:[[NSDate date] timeIntervalSince1970]] stringValue] : [NSNumber numberWithDouble:currentCharge]};
-              [[NSUserDefaults standardUserDefaults] setObject:newAvgTimeFastDict forKey:@"avgTimeFastDict"];
-              [[NSUserDefaults standardUserDefaults] setObject:[NSNumber numberWithDouble:avgTime] forKey:@"avgTimeFast"];
-              NSLog(@"[TESTINGTEST] NEW :%f",(remaining/charged)*timeToTime);
-              NSLog(@"[TESTINGTEST] NEW avgTime:%f",avgTime);
-            } else {
-              avgTime = [[[NSUserDefaults standardUserDefaults] valueForKey:@"avgTimeFast"] doubleValue];
-            }
-          //}
-        //}
-      } else {
-        NSDictionary *newAvgTimeFastDict = @{[[NSNumber numberWithDouble:[[NSDate date] timeIntervalSince1970]] stringValue] : [NSNumber numberWithDouble:currentCharge]};
-        [[NSUserDefaults standardUserDefaults] setObject:newAvgTimeFastDict forKey:@"avgTimeFastDict"];
-        [[NSUserDefaults standardUserDefaults] setObject:[NSNumber numberWithDouble:timeRemaining] forKey:@"avgTimeFast"];
-        NSLog(@"[TESTINGTEST] NIL avgTime:%f",avgTime);
-      }
-    }
 
     if (avgTime != 0) {
       if ([batteryInfo[@"AvgTimeToFull"] doubleValue] != 65535) {
         NSLog(@"[TESTINGTEST] avgTime:%f AvgTimeToFull:%f",avgTime,([batteryInfo[@"AvgTimeToFull"] doubleValue]/600));
-        timeRemaining = ((avgTime*2)+(timeRemaining*2)+([batteryInfo[@"AvgTimeToFull"] doubleValue]/600))/5;
+        //timeRemaining = ((avgTime*2)+(timeRemaining*2)+([batteryInfo[@"AvgTimeToFull"] doubleValue]/600))/5;
+        timeRemaining = (avgTime+(timeRemaining*2)+([batteryInfo[@"AvgTimeToFull"] doubleValue]/600))/4;
       } else {
         NSLog(@"[TESTINGTEST] avgTime:%f",avgTime);
-        timeRemaining = ((avgTime*2)+(timeRemaining*2))/4;
+        //timeRemaining = ((avgTime*2)+(timeRemaining*2))/4;
+        timeRemaining = (avgTime+(timeRemaining*2))/3;
       }
     } else if ([batteryInfo[@"AvgTimeToFull"] doubleValue] != 65535) {
       NSLog(@"[TESTINGTEST] AvgTimeToFull:%f",([batteryInfo[@"AvgTimeToFull"] doubleValue]/600));
@@ -180,21 +152,47 @@ NSDictionary* getBatteryInfo() {
 - (void)applicationDidFinishLaunching:(id)application {
   %orig;
   [[NSNotificationCenter defaultCenter] addObserver:self
-  selector:@selector(batteryStateChange:) 
-  name:@"UIDeviceBatteryStateDidChangeNotification"
-  object:nil];
+    selector:@selector(batteryStateChange:) 
+    name:@"UIDeviceBatteryStateDidChangeNotification"
+    object:nil];
+  [[NSNotificationCenter defaultCenter] addObserver:self
+    selector:@selector(batteryLevelChange:) 
+    name:@"UIDeviceBatteryLevelDidChangeNotification"
+    object:nil];
 }
 
 %new
 - (void)batteryStateChange:(NSNotification *)notification {
   if ([[UIDevice currentDevice] batteryState] == 2) {
     NSLog(@"[TESTINGTEST] state: Plugged");
+    showString = NO;
+
+    NSDictionary* batteryInfo = getBatteryInfo();
+    NSLog(@"[TESTINGTEST] %@",batteryInfo);
+    NSLog(@"[TESTINGTEST] AvgTimeToFull:%f",[batteryInfo[@"AvgTimeToFull"] doubleValue]);
+    NSLog(@"[TESTINGTEST] AdapterCurrent:%f",[batteryInfo[@"AdapterDetails"][@"Current"] doubleValue]);
+
+      double max = [batteryInfo[@"NominalChargeCapacity"] doubleValue];
+      double amp = [batteryInfo[@"Amperage"] doubleValue];
+      if (amp <= 0) amp = [batteryInfo[@"AdapterDetails"][@"Current"] doubleValue]-250;
+      double currentCharge = [batteryInfo[@"AbsoluteCapacity"] doubleValue];
+      long long timeRemaining = ((max-currentCharge)/amp)*60;
+
+      NSDictionary *newAvgTimeDict = @{[[NSNumber numberWithDouble:[[NSDate date] timeIntervalSince1970]] stringValue] : [NSNumber numberWithDouble:currentCharge]};
+
+      [[NSUserDefaults standardUserDefaults] setObject:[NSNumber numberWithLongLong:timeRemaining] forKey:[NSString stringWithFormat:@"avgTime%lld",[batteryInfo[@"AdapterDetails"][@"Watts"] longLongValue]]];
+      [[NSUserDefaults standardUserDefaults] setObject:newAvgTimeDict forKey:[NSString stringWithFormat:@"avgTimeDict%lld",[batteryInfo[@"AdapterDetails"][@"Watts"] longLongValue]]];
   } else if ([[UIDevice currentDevice] batteryState] == 1) {
     NSLog(@"[TESTINGTEST] state: Unplugged");
-    /*[[NSUserDefaults standardUserDefaults] setValue:0 forKey:@"avgTimeDict"];
-    [[NSUserDefaults standardUserDefaults] setValue:0 forKey:@"avgTimeFastDict"];
-    [[NSUserDefaults standardUserDefaults] setValue:0 forKey:@"avgTime"];
-    [[NSUserDefaults standardUserDefaults] setValue:0 forKey:@"avgTimeFast"];*/
+    showString = NO;
+  }
+}
+
+%new
+- (void)batteryLevelChange:(NSNotification *)notification {
+  if ([[UIDevice currentDevice] batteryState] == 2) {
+    NSLog(@"[TESTINGTEST] batteryLevelChanged");
+    showString = YES;
   }
 }
 %end
