@@ -28,11 +28,11 @@ NSDictionary* getBatteryInfo() {
   io_service_t service = IOServiceGetMatchingService(kIOMasterPortDefault, matching);
   CFMutableDictionaryRef prop = NULL;
   IORegistryEntryCreateCFProperties(service, &prop, NULL, 0);
-  CFTypeRef intTimeRemaining;
-  intTimeRemaining = IORegistryEntryCreateCFProperty(service, CFSTR("AvgTimeToFull"), NULL, 0);
-  NSString *serialNumber = [NSString stringWithString:(__bridge NSString*)intTimeRemaining];
-  CFRelease(intTimeRemaining);
-  NSLog(@"timeRemaining: %@", serialNumber);
+  //CFTypeRef intTimeRemaining;
+  //intTimeRemaining = IORegistryEntryCreateCFProperty(service, CFSTR("AvgTimeToFull"), NULL, 0);
+  //NSString *serialNumber = [NSString stringWithString:(__bridge NSString*)intTimeRemaining];
+  //CFRelease(intTimeRemaining);
+  //NSLog(@"[TESTINGTEST] AvgTimeToFull: %@", serialNumber);
   NSDictionary* dict = (__bridge_transfer NSDictionary*)prop;
   IOObjectRelease(service);
   return dict;
@@ -60,7 +60,6 @@ static BOOL showString = YES;
     //long long deviceCharge = MSHookIvar<long long>(device, "_percentCharge");
     //BOOL deviceCharging = MSHookIvar<BOOL>(device, "_charging");
 
-    //getInfo:
     NSDictionary* batteryInfo = getBatteryInfo();
     NSLog(@"[TESTINGTEST] %@",batteryInfo);
     NSLog(@"[TESTINGTEST] AbsoluteCapacity:%f",[batteryInfo[@"AbsoluteCapacity"] doubleValue]);
@@ -70,7 +69,7 @@ static BOOL showString = YES;
 
     double max = [batteryInfo[@"NominalChargeCapacity"] doubleValue];
     double amp = [batteryInfo[@"Amperage"] doubleValue];
-    if (amp <= 0) amp = [batteryInfo[@"AdapterDetails"][@"Current"] doubleValue]-250;
+    if (amp <= 200) amp = [batteryInfo[@"AdapterDetails"][@"Current"] doubleValue]-250;
     double currentCharge = [batteryInfo[@"AbsoluteCapacity"] doubleValue];
     long long timeRemaining = ((max-currentCharge)/amp)*60;
     NSLog(@"[TESTINGTEST] timeRemaining:%lld",timeRemaining);
@@ -79,24 +78,23 @@ static BOOL showString = YES;
       [newMessage appendString:[NSString stringWithFormat:@"%lldW Charging ",[batteryInfo[@"AdapterDetails"][@"Watts"] longLongValue]]]; // מבנה ההודעה
       if ([[NSUserDefaults standardUserDefaults] dictionaryForKey:[NSString stringWithFormat:@"avgTimeDict%lld",[batteryInfo[@"AdapterDetails"][@"Watts"] longLongValue]]]) {      
         NSMutableDictionary *avgTimeDict = [[[NSUserDefaults standardUserDefaults] dictionaryForKey:[NSString stringWithFormat:@"avgTimeDict%lld",[batteryInfo[@"AdapterDetails"][@"Watts"] longLongValue]]] mutableCopy];
-        //if (avgTimeDict != nil) {
-          //if ([avgTimeDict count] == 1) {
-            if (currentCharge - [[avgTimeDict allValues][0] doubleValue] >= 20) {
-            //if ([[avgTimeDict allValues][0] doubleValue] < currentCharge) {
-              double timeToTime = [[NSDate date] timeIntervalSince1970] - [[avgTimeDict allKeys][0] doubleValue];
-              double charged = currentCharge - [[avgTimeDict allValues][0] doubleValue];
-              double remaining = max - currentCharge;
-              avgTime = ((((remaining/charged)*timeToTime)+[[[NSUserDefaults standardUserDefaults] valueForKey:[NSString stringWithFormat:@"avgTime%lld",[batteryInfo[@"AdapterDetails"][@"Watts"] longLongValue]]] longLongValue])/2)/60;
-              NSDictionary *newAvgTimeDict = @{[[NSNumber numberWithDouble:[[NSDate date] timeIntervalSince1970]] stringValue] : [NSNumber numberWithDouble:currentCharge]};
-              [[NSUserDefaults standardUserDefaults] setObject:newAvgTimeDict forKey:[NSString stringWithFormat:@"avgTimeDict%lld",[batteryInfo[@"AdapterDetails"][@"Watts"] longLongValue]]];
-              [[NSUserDefaults standardUserDefaults] setObject:[NSNumber numberWithDouble:avgTime] forKey:[NSString stringWithFormat:@"avgTime%lld",[batteryInfo[@"AdapterDetails"][@"Watts"] longLongValue]]];
-              NSLog(@"[TESTINGTEST] NEW :%f",(remaining/charged)*timeToTime);
-              NSLog(@"[TESTINGTEST] NEW avgTime:%f",avgTime);
-            } else {
-              avgTime = [[[NSUserDefaults standardUserDefaults] valueForKey:[NSString stringWithFormat:@"avgTime%lld",[batteryInfo[@"AdapterDetails"][@"Watts"] longLongValue]]] longLongValue];
-            }
-          //}
-        //}
+        if (currentCharge - [[avgTimeDict allValues][0] doubleValue] >= 50) {
+        //if ([[avgTimeDict allValues][0] doubleValue] < currentCharge) {
+          double timeToTime = [[NSDate date] timeIntervalSince1970] - [[avgTimeDict allKeys][0] doubleValue];
+          double charged = currentCharge - [[avgTimeDict allValues][0] doubleValue];
+          double remaining = max - currentCharge;
+          NSLog(@"[TESTINGTEST] testingtest: %lld",[[[NSUserDefaults standardUserDefaults] valueForKey:[NSString stringWithFormat:@"avgTime%lld",[batteryInfo[@"AdapterDetails"][@"Watts"] longLongValue]]] longLongValue]);
+          avgTime = ((remaining/(charged*(timeToTime/60)))+[[[NSUserDefaults standardUserDefaults] valueForKey:[NSString stringWithFormat:@"avgTime%lld",[batteryInfo[@"AdapterDetails"][@"Watts"] longLongValue]]] longLongValue])/2;
+          NSDictionary *newAvgTimeDict = @{[[NSNumber numberWithDouble:[[NSDate date] timeIntervalSince1970]] stringValue] : [NSNumber numberWithDouble:currentCharge]};
+          [[NSUserDefaults standardUserDefaults] setObject:newAvgTimeDict forKey:[NSString stringWithFormat:@"avgTimeDict%lld",[batteryInfo[@"AdapterDetails"][@"Watts"] longLongValue]]];
+          [[NSUserDefaults standardUserDefaults] setObject:[NSNumber numberWithDouble:avgTime] forKey:[NSString stringWithFormat:@"avgTime%lld",[batteryInfo[@"AdapterDetails"][@"Watts"] longLongValue]]];
+          NSLog(@"[TESTINGTEST] NEW : %f",((remaining/charged)*timeToTime)/60);
+          NSLog(@"[TESTINGTEST] NEW : %f",(remaining/(charged*(timeToTime/60))));
+          NSLog(@"[TESTINGTEST] NEW avgTime: %f",avgTime);
+        } else {
+          avgTime = [[[NSUserDefaults standardUserDefaults] valueForKey:[NSString stringWithFormat:@"avgTime%lld",[batteryInfo[@"AdapterDetails"][@"Watts"] longLongValue]]] longLongValue];
+          NSLog(@"[TESTINGTEST] testingtest: %lld avgTime: %f",[[[NSUserDefaults standardUserDefaults] valueForKey:[NSString stringWithFormat:@"avgTime%lld",[batteryInfo[@"AdapterDetails"][@"Watts"] longLongValue]]] longLongValue], avgTime);
+        }
       } else {
         NSDictionary *newAvgTimeDict = @{[[NSNumber numberWithDouble:[[NSDate date] timeIntervalSince1970]] stringValue] : [NSNumber numberWithDouble:currentCharge]};
         [[NSUserDefaults standardUserDefaults] setObject:newAvgTimeDict forKey:[NSString stringWithFormat:@"avgTimeDict%lld",[batteryInfo[@"AdapterDetails"][@"Watts"] longLongValue]]];
@@ -107,12 +105,12 @@ static BOOL showString = YES;
     if (avgTime != 0) {
       if ([batteryInfo[@"AvgTimeToFull"] doubleValue] != 65535) {
         NSLog(@"[TESTINGTEST] avgTime:%f AvgTimeToFull:%f",avgTime,([batteryInfo[@"AvgTimeToFull"] doubleValue]/600));
-        //timeRemaining = ((avgTime*2)+(timeRemaining*2)+([batteryInfo[@"AvgTimeToFull"] doubleValue]/600))/5;
-        timeRemaining = (avgTime+(timeRemaining*2)+([batteryInfo[@"AvgTimeToFull"] doubleValue]/600))/4;
+        timeRemaining = ((avgTime*2)+(timeRemaining*2)+([batteryInfo[@"AvgTimeToFull"] doubleValue]/600))/5;
+        //timeRemaining = (avgTime+(timeRemaining*2)+([batteryInfo[@"AvgTimeToFull"] doubleValue]/600))/4;
       } else {
         NSLog(@"[TESTINGTEST] avgTime:%f",avgTime);
-        //timeRemaining = ((avgTime*2)+(timeRemaining*2))/4;
-        timeRemaining = (avgTime+(timeRemaining*2))/3;
+        timeRemaining = ((avgTime*2)+(timeRemaining*2))/4;
+        //timeRemaining = (avgTime+(timeRemaining*2))/3;
       }
     } else if ([batteryInfo[@"AvgTimeToFull"] doubleValue] != 65535) {
       NSLog(@"[TESTINGTEST] AvgTimeToFull:%f",([batteryInfo[@"AvgTimeToFull"] doubleValue]/600));
@@ -130,10 +128,10 @@ static BOOL showString = YES;
         arg1 = newMessage;
       } else {
         if (timeRemaining <= 1) {
-          if (currentCharge <= 1 && currentCharge >= 0.99) {
+          //if (currentCharge <= 1 && currentCharge >= 0.99) {
             [newMessage appendString:[NSString stringWithFormat:@"(almost full)"]]; // מבנה ההודעה
             arg1 = newMessage;
-          }
+          //}
         } else {
           [newMessage appendString:[NSString stringWithFormat:@"(%lld mins until full)", timeRemaining]]; // מבנה ההודעה
           arg1 = newMessage;

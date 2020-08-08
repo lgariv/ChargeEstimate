@@ -2,7 +2,7 @@ Package: com.miwix.chargeestimate
 Name: ChargeEstimate
 Depends: mobilesubstrate
 Pre-Depends: ws.hbang.common (>= 1.12)
-Version: 0.0.1
+Version: 0.0.2
 Architecture: iphoneos-arm
 Depiction: https://lgariv.github.io/LaVie/depictions/?p=com.miwix.chargeestimate
 Maintainer: Lavie Gariv <lavie43b@gmail.com>
